@@ -1,9 +1,9 @@
 import matplotlib.pyplot as plt
 
 
-sv = open("/Users/rockychen/Desktop/Control theory/competition-code/src/objects/motion_profile/Svelocity.txt", "r")
-sp = open("/Users/rockychen/Desktop/Control theory/competition-code/src/objects/motion_profile/Sposition.txt", "r")
-sa = open("/Users/rockychen/Desktop/Control theory/competition-code/src/objects/motion_profile/Sacceleration.txt", "r")
+sv = open("/Users/rockychen/Desktop/ramsete/Svelocity.txt", "r")
+sp = open("/Users/rockychen/Desktop/ramsete/Sposition.txt", "r")
+sa = open("/Users/rockychen/Desktop/ramsete/Sacceleration.txt", "r")
 # np = open("/Users/rockychen/Desktop/Control theory/competition-code/src/objects/motion_profile/Tposition.txt", "r")
 # nv = open("/Users/rockychen/Desktop/Control theory/competition-code/src/objects/motion_profile/Tvelocity.txt", "r")
 
@@ -66,7 +66,7 @@ sa.close()
 # np.close()
 # nv.close()
 
-figure, axis = plt.subplots(1, 3)
+figure, axis = plt.subplots(2, 2)
 
 
 axis[0, 0].plot(Stime, Sposition)
@@ -77,9 +77,9 @@ axis[0, 1].plot(Stime, Svelocity)
 axis[0, 1].set_title("S-Curve Velocity vs. Time")
 axis[0, 1].axis([-1, 6, -1, 10])
 
-axis[0, 2].plot(Stime, Sacceleration)
-axis[0, 2].set_title("S-Curve Acceleration vs. Time")
-axis[0, 2].axis([-1, 6, -10, 10])
+axis[1, 0].plot(Stime, Sacceleration)
+axis[1, 0].set_title("S-Curve Acceleration vs. Time")
+axis[1, 0].axis([-1, 6, -10, 10])
 
 # axis[1, 0].plot(Ntime, Nposition)
 # axis[1, 0].set_title("T-Curve Position vs. Time")
