@@ -4,88 +4,191 @@
 #include <iostream>
 
 
-S_CurveProfile::S_CurveProfile(float distance, float velocity_max, float acceleration, float jerk) : MotionProfile::MotionProfile(distance, velocity_max, acceleration){
+namespace math{
+    float clamp(float n, float lower, float upper) {
+        return std::max(lower, std::min(n, upper));
+    }
+}
+
+SigmoidMotionProfile::SigmoidMotionProfile(float target, float maxVelocity, float maxAcceleration,
+                                           float maxDeceleration, float jerk) {
+    this->target = target;
+    this->maxVelocity = maxVelocity;
+    this->maxAcceleration = maxAcceleration;
+    this->maxDeceleration = maxDeceleration;
+    this->jerk = jerk;
     this->profile.clear();
-    this->displacement_velocity_profile.clear();
-    this->motion_jerk = jerk;
-    this->motion_time_accelerate = this->motion_acceleration / this->motion_jerk;
-    float t2 = this->motion_velocity_max / this->motion_acceleration;
-    float t4 = this->motion_distance / this->motion_velocity_max;
-    float t6 = t4 + t2;
-    std::array<float, 8> time_seq = {0.0f, motion_time_accelerate, t2, t2 + this->motion_time_accelerate, t4, t4 + this->motion_time_accelerate, t6, t6 + this->motion_time_accelerate};
-    this->time_array = time_seq;
-    this->motion_time_full = time_array[7];
-    this->displacement = 0;
+
+    this->timeToMaxAccel = this->maxAcceleration / this->jerk;
+    this->timeToMaxDecel = this->maxDeceleration / this->jerk;
+
+    bool shortProfile =
+            this->maxVelocity * (this->timeToMaxAccel + this->maxVelocity / this->maxAcceleration) > this->target;
+    this->maxVelocity = shortProfile ?
+                        (float) (this->maxAcceleration *
+                                 (sqrt(this->target / this->maxAcceleration - 0.75 * pow(this->timeToMaxAccel, 2) -
+                                       0.5 * this->timeToMaxAccel)))
+                                     : this->maxVelocity;
+
+    float t1, t2, t3, t4, t5, t6, t7;
+    this->timeInterval = {0.0f,
+            t1 = this->timeToMaxAccel,
+            t2 = this->maxVelocity / this->maxAcceleration,
+            t3 = t2 + this->timeToMaxAccel,
+            t4 = shortProfile ? t3 : target / this->maxVelocity,
+            t5 = t4 + timeToMaxDecel,
+            t6 = t4 + (this->maxVelocity / this->maxDeceleration),
+            t7 = t6 + this->timeToMaxDecel};
+    for(auto kv : timeInterval){
+        std::cout << kv << ", ";
+    }
+    std::cout << std::endl << &timeInterval[7] << std::endl;
 }
 
-
-void S_CurveProfile::find_time_section(float time){
-    if(time < this->time_array[0]) this->time_section_pointer = 0;
-    else if(time < this->time_array[1]) this->time_section_pointer = 1;
-    else if(time < this->time_array[2]) this->time_section_pointer = 2;
-    else if(time < this->time_array[3]) this->time_section_pointer = 3;
-    else if(time < this->time_array[4]) this->time_section_pointer = 4;
-    else if(time < this->time_array[5]) this->time_section_pointer = 5;
-    else if(time < this->time_array[6]) this->time_section_pointer = 6;
-    else if(time < this->time_array[7]) this->time_section_pointer = 7;
-    else this->time_section_pointer = 8;
+SigmoidMotionProfile::SigmoidMotionProfile(float target, float maxVelocity, float maxAcceleration, float jerk) {
+    SigmoidMotionProfile(target, maxVelocity, maxAcceleration, maxAcceleration, jerk);
 }
 
-float S_CurveProfile::get_jerk(float time){
-    if(this->time_section_pointer == 1 || this->time_section_pointer == 7) return this->motion_jerk;
-    else if(this->time_section_pointer == 3 || this->time_section_pointer == 5) return -this->motion_jerk;
+/*SigmoidMotionProfile SigmoidMotionProfile::setConstraints(float startPos, float endPos, ProfileConstraints constraint) {
+    auto setValueIfNotSet = [](auto &target, const auto &source, const std::string &errorMessage) {
+        if (source.has_value() && !target.has_value()) {
+            target = source;
+        } else {
+            throw std::runtime_error(errorMessage);
+        }
+    };
+
+    const auto &key = this->constraints.find({startPos, endPos});
+    if (key != this->constraints.end()) {
+        setValueIfNotSet(this->constraints[{startPos, endPos}].maxVelocity, constraint.maxVelocity,
+                         "Max Velocity has been set once.");
+        setValueIfNotSet(this->constraints[{startPos, endPos}].maxAcceleration, constraint.maxAcceleration,
+                         "Max Acceleration has been set once.");
+        setValueIfNotSet(this->constraints[{startPos, endPos}].maxDeceleration, constraint.maxDeceleration,
+                         "Max Deceleration has been set once.");
+    }
+
+    if (startPos < 0 || startPos > this->target || endPos < 0 || endPos > this->target) {
+        throw std::runtime_error("Limit out of range");
+    }
+
+    constraints[{startPos, endPos}] = constraint;
+
+    return *this;
+}*/
+
+void SigmoidMotionProfile::updateInterval(float time) {
+    for (int interval = 1; interval <= 8; interval++) {
+        if (time == math::clamp(time, this->timeInterval[interval - 1], this->timeInterval[interval]))
+            this->currentInterval = interval;
+        return;
+    }
+}
+
+float SigmoidMotionProfile::getJerk(float time) {
+    switch (this->currentInterval) {
+        case 1:
+        case 7:
+            return this->currentJerk = this->jerk;
+        case 0:
+        case 2:
+        case 4:
+        case 6:
+            return this->currentJerk = 0;
+        case 3:
+        case 5:
+            return this->currentJerk = -this->jerk;
+    }
     return 0;
 }
 
-float S_CurveProfile::get_acceleration(float time){
-    int sgn = this->time_section_pointer <= 4 ? 1 : -1;
-    float decel = this->motion_jerk * (time - time_array[this->time_section_pointer - 1]);
-    if(this->time_section_pointer == 1) return this->motion_jerk * time;
-    else if(this->time_section_pointer == 5) return -decel;
-    else if(this->time_section_pointer == 2 || this->time_section_pointer == 6) return sgn * this->motion_acceleration;
-    else if(this->time_section_pointer == 3 || this->time_section_pointer == 7) return sgn * (this->motion_acceleration - decel);
-    return 0.0f;
-}
-
-float S_CurveProfile::get_velocity(float time){
-    float accel_time_base = time - 0.5 * this->motion_time_accelerate;
-    float accel_time = time_section_pointer < 4 ? accel_time_base : (time_array[2] + time_array[5] - time - 0.5 * this->motion_time_accelerate);
-    float velocity_net = 0.0f;
-    float velocity_offset = 0.5f * this->motion_jerk * std::pow(time - this->time_array[this->time_section_pointer - 1], 2);
-    if (this->time_section_pointer % 4 == 2 || this->time_section_pointer % 4 == 3) velocity_net = this->motion_acceleration * accel_time; //time section: 2, 3, 6, 7
-    if (this->time_section_pointer       == 4 || this->time_section_pointer       == 5) velocity_net += this->motion_velocity_max;
-    else if (this->time_section_pointer       == 1 || this->time_section_pointer       == 7) velocity_net += velocity_offset;
-    if (this->time_section_pointer       == 3 || this->time_section_pointer       == 5) velocity_net -= velocity_offset;
-
-    return velocity_net;
-}
-
-
-
-float S_CurveProfile::get_distance(float time, float delta_t){
-    this->displacement += this->get_velocity(time) * delta_t;
-
-    return this->displacement;
-}
-
-
-std::map<float, S_CurveProfile::position_status> S_CurveProfile::get_profile(float delta_t){
-    if(this->profile.size() > 0) return profile;
-    for(float t = 0; t < this->get_time(); t += delta_t){
-        this->find_time_section(t);
-        float dis = this->get_distance(t, delta_t), vel = this->get_velocity(t), acc = this->get_acceleration(t);
-        this->profile[t] = (S_CurveProfile::position_status){.position = dis, .velocity = vel, .acceleration = acc};
+float SigmoidMotionProfile::getAcceleration(float time) {
+    float sectionTime = time - this->timeInterval[this->currentInterval - 1];
+    switch (this->currentInterval) {
+        case 0:
+        case 4:
+            return this->currentAcceleration = 0;
+        case 2:
+        case 6:
+            return this->currentAcceleration;
+        case 1:
+        case 7:
+            return this->currentAcceleration = this->currentJerk * sectionTime;
+        case 3:
+        case 5:
+            return this->currentAcceleration = -this->currentJerk * sectionTime;
     }
-    return profile;
+    return 0;
 }
 
-
-std::map<float, float> S_CurveProfile::get_displacement_velocity_profile(float delta_t){
-    for(float t = 0; t < this->get_time(); t+= delta_t){
-        this->find_time_section(t);
-        float dis = this->get_distance(t, delta_t), vel = this->get_velocity(t);
-        std::cout << dis << ',' <<' ' << vel << std::endl;
-        this->displacement_velocity_profile[dis] = vel;
+float SigmoidMotionProfile::getVelocity(float time) {
+    float sectionTime = time - this->timeInterval[this->currentInterval - 1];
+    float jerkIntegral = SigmoidMotionProfile::doubleIntegral(this->currentJerk, sectionTime);
+    float accelIntegral = SigmoidMotionProfile::integral(this->currentAcceleration, sectionTime);
+    switch (this->currentInterval) {
+        case 0:
+            return this->currentVelocity = 0;
+        case 1:
+        case 5:
+            return this->currentVelocity = jerkIntegral;
+        case 2:
+        case 6:
+            return this->currentVelocity += accelIntegral;
+        case 3:
+        case 7:
+            return this->currentVelocity += accelIntegral + jerkIntegral;
+        case 4:
+            return this->currentVelocity;
     }
-    return this->displacement_velocity_profile;
+    return 0;
 }
+
+float SigmoidMotionProfile::getDisplacement(float time) {
+    float sectionTime = time - this->timeInterval[this->currentInterval - 1];
+    float jerkIntegral = SigmoidMotionProfile::tripleIntegral(this->currentJerk, sectionTime);
+    float accelIntegral = SigmoidMotionProfile::doubleIntegral(this->currentAcceleration, sectionTime);
+    float velIntegral = SigmoidMotionProfile::integral(this->currentVelocity, sectionTime);
+    switch (this->currentInterval) {
+        case 0:
+            return this->currentPosition = 0;
+        case 1:
+            return this->currentPosition = jerkIntegral;
+        case 2:
+        case 6:
+            return this->currentPosition += accelIntegral + jerkIntegral;
+        case 3:
+        case 7:
+            return this->currentPosition += velIntegral + accelIntegral + jerkIntegral;
+        case 4:
+            return this->currentPosition += velIntegral;
+        case 5:
+            return this->currentPosition += velIntegral + accelIntegral;
+
+    }
+    return 0;
+}
+
+float SigmoidMotionProfile::getTotalTime(){
+    std::cout<<&this->timeInterval[7];
+    return this->timeInterval[7];
+}
+
+std::map<float, SigmoidMotionProfile::ProfileStatus> SigmoidMotionProfile::getProfile(float dt) {
+    for(auto kv : timeInterval){
+        std::cout << kv << ", ";
+    }
+    std::cout<<std::endl <<&this->timeInterval[7] << " : " << this->timeInterval[7];
+    for (float t = 0; t < this->timeInterval[7]; t += dt) {
+        this->updateInterval(t);
+        this->getJerk(t);
+        this->profile[t] = (SigmoidMotionProfile::ProfileStatus){.position = this->getDisplacement(t), .velocity = this->getVelocity(t), .acceleration = this->getAcceleration(t)};
+    }
+    return this->profile;
+}
+
+
+
+
+
+
+

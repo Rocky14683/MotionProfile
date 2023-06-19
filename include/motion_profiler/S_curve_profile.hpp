@@ -1,36 +1,62 @@
-#include "../motion_profiler/T_curve_profile.hpp"
 #include <map>
 #include <array>
+#include <vector>
 
-class S_CurveProfile : public MotionProfile{
+/*typedef struct{
+    std::optional<float> maxVelocity;
+    std::optional<float> maxAcceleration;
+    std::optional<float> maxDeceleration;
+}ProfileConstraints;*/
+
+class SigmoidMotionProfile {
 public:
-    struct position_status{
+    struct ProfileStatus{
         float position, velocity, acceleration;
     };
 
 private:
-    float motion_jerk;
-    std::array<float, 8> time_array;
-    float motion_time_accelerate;
-    std::map<float, position_status> profile;
-    std::map<float, float> displacement_velocity_profile;
-    unsigned int time_section_pointer;
+    static float integral(float rhs, float time){
+        return rhs * time;
+    }
+    static float doubleIntegral(float rhs, float time){
+        return rhs * time * time / 2;
+    }
+    static float tripleIntegral(float rhs, float time){
+        return rhs * time * time * time / 6;
+    }
 
-    float displacement;
-    float last_vel;
+
+    float target;
+    float maxVelocity, maxAcceleration, maxDeceleration;
+    float jerk;
+
+    float currentPosition;
+    float currentVelocity;
+    float currentAcceleration;
+    float currentJerk;
+
+    float timeToMaxAccel, timeToMaxDecel;
+    std::map<float, ProfileStatus> profile;
+
+//    std::map<std::pair<float, float>, ProfileConstraints> constraints;
+
+    std::vector<float> timeInterval;
 
 
-    float get_jerk(float time);
+    unsigned int currentInterval;
 
+    void updateInterval(float time);
+    float getJerk(float time);
+    float getDisplacement(float time);
+    float getVelocity(float time);
+    float getAcceleration(float time);
 public:
 
-    S_CurveProfile(float distance, float velocity_max, float acceleration, float jerk);
-    void find_time_section(float time);
-    float get_distance(float time, float delta_t);
-    float get_velocity(float time);
-    float get_acceleration(float time);
-    std::map<float, position_status> get_profile(float delta_t);
-    std::map<float, float> get_displacement_velocity_profile(float delta_t);
+    SigmoidMotionProfile(float target, float maxVelocity, float maxAcceleration, float maxDeceleration, float jerk);
+    SigmoidMotionProfile(float target, float maxVelocity, float maxAcceleration, float jerk);
+//    SigmoidMotionProfile setConstraints(float startPos, float endPos, ProfileConstraints constraints);
+    float getTotalTime();
+    std::map<float, ProfileStatus> getProfile(float dt = 0.01);
 };
 
 

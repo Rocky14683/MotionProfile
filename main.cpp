@@ -6,7 +6,7 @@
 
 int main(){
 
-    S_CurveProfile s_profile(30, 9, 6, 13);
+
 
 
     std::ofstream Spos;
@@ -16,7 +16,14 @@ int main(){
     std::ofstream Sacc;
     Sacc.open("Sacceleration.txt");
 
-    std::map<float, float> profile = s_profile.get_displacement_velocity_profile(0.01);
+    std::map<float, SigmoidMotionProfile::ProfileStatus>profile = SigmoidMotionProfile(30, 9, 6, 13).getProfile();
+    std::cout << profile.size();
+    for(auto& [time, status] : profile){
+        Spos << status.position << std::endl;
+        std::cout << status.position << ", " << status.velocity << ", " << status.acceleration << std::endl;
+        Svel << status.velocity << std::endl;
+        Sacc << status.acceleration << std::endl;
+    }
 
     Spos.close();
     Svel.close();
