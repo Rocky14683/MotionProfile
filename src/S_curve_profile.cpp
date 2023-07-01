@@ -3,192 +3,122 @@
 #include <fstream>
 #include <iostream>
 
-
-namespace math{
-    float clamp(float n, float lower, float upper) {
-        return std::max(lower, std::min(n, upper));
-    }
-}
+namespace math {
+float clamp(float n, float lower, float upper) { return std::max(lower, std::min(n, upper)); }
+} // namespace math
 
 SigmoidMotionProfile::SigmoidMotionProfile(float target, float maxVelocity, float maxAcceleration,
-                                           float maxDeceleration, float jerk) {
-    this->target = target;
-    this->maxVelocity = maxVelocity;
-    this->maxAcceleration = maxAcceleration;
-    this->maxDeceleration = maxDeceleration;
-    this->jerk = jerk;
+                                           float maxDeceleration, float jerk)
+    : target(target), maxVelocity(maxVelocity), maxAcceleration(maxAcceleration), maxDeceleration(maxDeceleration),
+      jerk(jerk), ratio(maxAcceleration / maxDeceleration) {
     this->profile.clear();
 
-    this->timeToMaxAccel = this->maxAcceleration / this->jerk;
-    this->timeToMaxDecel = this->maxDeceleration / this->jerk;
+    this->timeAtJ = this->maxAcceleration / this->jerk;
+    this->timeAtA = this->maxVelocity / this->maxAcceleration - this->timeAtJ;
 
-    bool shortProfile =
-            this->maxVelocity * (this->timeToMaxAccel + this->maxVelocity / this->maxAcceleration) > this->target;
-    this->maxVelocity = shortProfile ?
-                        (float) (this->maxAcceleration *
-                                 (sqrt(this->target / this->maxAcceleration - 0.75 * pow(this->timeToMaxAccel, 2) -
-                                       0.5 * this->timeToMaxAccel)))
-                                     : this->maxVelocity;
-
-    float t1, t2, t3, t4, t5, t6, t7;
-    this->timeInterval = {0.0f,
-            t1 = this->timeToMaxAccel,
-            t2 = this->maxVelocity / this->maxAcceleration,
-            t3 = t2 + this->timeToMaxAccel,
-            t4 = shortProfile ? t3 : target / this->maxVelocity,
-            t5 = t4 + timeToMaxDecel,
-            t6 = t4 + (this->maxVelocity / this->maxDeceleration),
-            t7 = t6 + this->timeToMaxDecel};
-    for(auto kv : timeInterval){
-        std::cout << kv << ", ";
+    if (this->timeAtA < 0) { // maxAcceleration is not reachable
+        this->timeAtA = 0;
+        this->timeAtJ = std::sqrtf(this->maxVelocity / this->jerk);
+        this->maxAccelNotReach = true;
+        std::cout << "1. maxAcceleration is not reachable" << std::endl;
     }
-    std::cout << std::endl << &timeInterval[7] << std::endl;
-}
 
-SigmoidMotionProfile::SigmoidMotionProfile(float target, float maxVelocity, float maxAcceleration, float jerk) {
-    SigmoidMotionProfile(target, maxVelocity, maxAcceleration, maxAcceleration, jerk);
-}
+    this->timeAtV = this->target / (this->jerk * this->timeAtJ * (this->timeAtJ + this->timeAtA)) -
+                    (this->ratio + 1) / 2 * (2 * this->timeAtJ + this->timeAtA);
 
-/*SigmoidMotionProfile SigmoidMotionProfile::setConstraints(float startPos, float endPos, ProfileConstraints constraint) {
-    auto setValueIfNotSet = [](auto &target, const auto &source, const std::string &errorMessage) {
-        if (source.has_value() && !target.has_value()) {
-            target = source;
-        } else {
-            throw std::runtime_error(errorMessage);
+    if (this->timeAtV < 0) { // maxVelocity is not reachable
+        this->timeAtV = 0;
+        float lambda = std::powf(this->timeAtJ, 2) + (8 * this->target)/ (this->jerk * this->timeAtJ * (this->ratio + 1));
+        this->timeAtA = (std::sqrtf(lambda) -3 * this->timeAtJ ) / 2;
+        this->maxVelNotReach = true;
+        std::cout << "maxVelocity is not reachable" << std::endl;
+
+        if (this->timeAtA < 0) { // maxAcceleration is not reachable
+            this->timeAtA = 0;
+            this->timeAtJ = std::powf(this->target / (this->jerk * (this->ratio + 1)), 1 / 3);
+            this->maxAccelNotReach = true;
+            std::cout << "2. maxAcceleration is not reachable" << std::endl;
+        }
+    }
+    float t0, t1, t2, t3, t4, t5, t6, t7;
+    this->timeInterval = {t0 = 0.0f,
+                          t1 = this->timeAtJ,
+                          t2 = t1 + this->timeAtA,
+                          t3 = t2 + this->timeAtJ,
+                          t4 = t3 + this->timeAtV,
+                          t5 = t4 + this->ratio * this->timeAtJ,
+                          t6 = t5 + this->ratio * this->timeAtA,
+                          t7 = t6 + this->ratio * this->timeAtJ};
+
+    for (float t : this->timeInterval) { std::cout << t << ","; }
+    std::cout << std::endl;
+
+    std::cout << "calculated length: "
+              << this->jerk * this->timeAtJ * (this->timeAtJ + this->timeAtA) / 2 *
+                     ((this->ratio + 1) * (2 * this->timeAtJ + this->timeAtA) + 2 * this->timeAtV);
+
+    this->endPhaseAcceleration[0] = this->endPhaseVelocity[0] = this->endPhasePosition[0] = 0.0f;
+};
+
+float SigmoidMotionProfile::getTotalTime() { return this->timeInterval[7]; }
+
+SigmoidMotionProfile::ProfileStatus SigmoidMotionProfile::step(float time) {
+    if (time > this->timeInterval[7]) throw std::runtime_error("Inputed Time is Larger Than Profile Time");
+
+    ProfileStatus status;
+
+    auto updateInterval = [&]() -> unsigned int {
+        for (int interval = 0; interval < timeInterval.size(); interval++) {
+            if (time == math::clamp(time, this->timeInterval[interval], this->timeInterval[interval + 1])) {
+                return interval + 1;
+            }
         }
     };
 
-    const auto &key = this->constraints.find({startPos, endPos});
-    if (key != this->constraints.end()) {
-        setValueIfNotSet(this->constraints[{startPos, endPos}].maxVelocity, constraint.maxVelocity,
-                         "Max Velocity has been set once.");
-        setValueIfNotSet(this->constraints[{startPos, endPos}].maxAcceleration, constraint.maxAcceleration,
-                         "Max Acceleration has been set once.");
-        setValueIfNotSet(this->constraints[{startPos, endPos}].maxDeceleration, constraint.maxDeceleration,
-                         "Max Deceleration has been set once.");
+    unsigned int currentInterval = updateInterval();
+
+    auto getJerk = [&]() -> float {
+        switch (currentInterval) {
+            case 2:
+            case 4:
+            case 6: return 0.0f;
+            case 1:
+            case 7: return this->jerk;
+            case 5:
+            case 3: return -this->jerk;
+        }
+    };
+
+    float sectionTime = time - timeInterval[currentInterval - 1];
+    int deceling = currentInterval < 4 ? 1 : -1;
+    float currentJerk = deceling == 1 ? getJerk() : getJerk() / (float)std::pow(this->ratio, 2);
+    // calculate
+    status.acceleration = this->endPhaseAcceleration[currentInterval] =
+        this->endPhaseAcceleration[currentInterval - 1] + integral(currentJerk, sectionTime);
+
+    status.velocity = this->endPhaseVelocity[currentInterval] =
+        this->endPhaseVelocity[currentInterval - 1] + doubleIntegral(currentJerk, sectionTime) +
+        integral(this->endPhaseAcceleration[currentInterval - 1], sectionTime);
+
+    status.position = this->endPhasePosition[currentInterval] =
+        this->endPhasePosition[currentInterval - 1] + tripleIntegral(currentJerk, sectionTime) +
+        doubleIntegral(this->endPhaseAcceleration[currentInterval - 1], sectionTime) +
+        integral(this->endPhaseVelocity[currentInterval - 1], sectionTime);
+
+    if ((this->maxAccelNotReach && (currentInterval == 1 || currentInterval == 5)) ||
+        (this->maxVelNotReach && currentInterval == 3)) {
+        this->endPhaseAcceleration[currentInterval + 1] = endPhaseAcceleration[currentInterval];
+        this->endPhaseVelocity[currentInterval + 1] = endPhaseVelocity[currentInterval];
+        this->endPhasePosition[currentInterval + 1] = endPhasePosition[currentInterval];
     }
 
-    if (startPos < 0 || startPos > this->target || endPos < 0 || endPos > this->target) {
-        throw std::runtime_error("Limit out of range");
-    }
-
-    constraints[{startPos, endPos}] = constraint;
-
-    return *this;
-}*/
-
-void SigmoidMotionProfile::updateInterval(float time) {
-    for (int interval = 1; interval <= 8; interval++) {
-        if (time == math::clamp(time, this->timeInterval[interval - 1], this->timeInterval[interval]))
-            this->currentInterval = interval;
-        return;
-    }
-}
-
-float SigmoidMotionProfile::getJerk(float time) {
-    switch (this->currentInterval) {
-        case 1:
-        case 7:
-            return this->currentJerk = this->jerk;
-        case 0:
-        case 2:
-        case 4:
-        case 6:
-            return this->currentJerk = 0;
-        case 3:
-        case 5:
-            return this->currentJerk = -this->jerk;
-    }
-    return 0;
-}
-
-float SigmoidMotionProfile::getAcceleration(float time) {
-    float sectionTime = time - this->timeInterval[this->currentInterval - 1];
-    switch (this->currentInterval) {
-        case 0:
-        case 4:
-            return this->currentAcceleration = 0;
-        case 2:
-        case 6:
-            return this->currentAcceleration;
-        case 1:
-        case 7:
-            return this->currentAcceleration = this->currentJerk * sectionTime;
-        case 3:
-        case 5:
-            return this->currentAcceleration = -this->currentJerk * sectionTime;
-    }
-    return 0;
-}
-
-float SigmoidMotionProfile::getVelocity(float time) {
-    float sectionTime = time - this->timeInterval[this->currentInterval - 1];
-    float jerkIntegral = SigmoidMotionProfile::doubleIntegral(this->currentJerk, sectionTime);
-    float accelIntegral = SigmoidMotionProfile::integral(this->currentAcceleration, sectionTime);
-    switch (this->currentInterval) {
-        case 0:
-            return this->currentVelocity = 0;
-        case 1:
-        case 5:
-            return this->currentVelocity = jerkIntegral;
-        case 2:
-        case 6:
-            return this->currentVelocity += accelIntegral;
-        case 3:
-        case 7:
-            return this->currentVelocity += accelIntegral + jerkIntegral;
-        case 4:
-            return this->currentVelocity;
-    }
-    return 0;
-}
-
-float SigmoidMotionProfile::getDisplacement(float time) {
-    float sectionTime = time - this->timeInterval[this->currentInterval - 1];
-    float jerkIntegral = SigmoidMotionProfile::tripleIntegral(this->currentJerk, sectionTime);
-    float accelIntegral = SigmoidMotionProfile::doubleIntegral(this->currentAcceleration, sectionTime);
-    float velIntegral = SigmoidMotionProfile::integral(this->currentVelocity, sectionTime);
-    switch (this->currentInterval) {
-        case 0:
-            return this->currentPosition = 0;
-        case 1:
-            return this->currentPosition = jerkIntegral;
-        case 2:
-        case 6:
-            return this->currentPosition += accelIntegral + jerkIntegral;
-        case 3:
-        case 7:
-            return this->currentPosition += velIntegral + accelIntegral + jerkIntegral;
-        case 4:
-            return this->currentPosition += velIntegral;
-        case 5:
-            return this->currentPosition += velIntegral + accelIntegral;
-
-    }
-    return 0;
-}
-
-float SigmoidMotionProfile::getTotalTime(){
-    std::cout<<&this->timeInterval[7];
-    return this->timeInterval[7];
+    std::cout << time << ": " << status.position << ", " << status.velocity << ", " << status.acceleration << std::endl;
+    std::cout << currentInterval << std::endl;
+    return status;
 }
 
 std::map<float, SigmoidMotionProfile::ProfileStatus> SigmoidMotionProfile::getProfile(float dt) {
-    for(auto kv : timeInterval){
-        std::cout << kv << ", ";
-    }
-    std::cout<<std::endl <<&this->timeInterval[7] << " : " << this->timeInterval[7];
-    for (float t = 0; t < this->timeInterval[7]; t += dt) {
-        this->updateInterval(t);
-        this->getJerk(t);
-        this->profile[t] = (SigmoidMotionProfile::ProfileStatus){.position = this->getDisplacement(t), .velocity = this->getVelocity(t), .acceleration = this->getAcceleration(t)};
-    }
+    dt = fmin(dt, 0.005);
+    for (float t = 0; t < this->getTotalTime(); t += dt) { this->profile[t] = this->step(t); }
     return this->profile;
 }
-
-
-
-
-
-
-

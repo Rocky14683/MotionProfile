@@ -7,20 +7,18 @@
 int main(){
 
 
-
-
+    using namespace std;
     std::ofstream Spos;
-    Spos.open("Sposition.txt");
+    Spos.open("/Users/rockychen/Desktop/motionProfile/Ramsete/include/SPosition.txt");
     std::ofstream Svel;
-    Svel.open("Svelocity.txt");
+    Svel.open("/Users/rockychen/Desktop/motionProfile/Ramsete/include/Svelocity.txt");
     std::ofstream Sacc;
-    Sacc.open("Sacceleration.txt");
+    Sacc.open("/Users/rockychen/Desktop/motionProfile/Ramsete/include/Sacceleration.txt");
 
-    std::map<float, SigmoidMotionProfile::ProfileStatus>profile = SigmoidMotionProfile(30, 9, 6, 13).getProfile();
+    std::map<float, SigmoidMotionProfile::ProfileStatus>profile = SigmoidMotionProfile(20, 6, 13, 5,20).getProfile(0.001);
     std::cout << profile.size();
     for(auto& [time, status] : profile){
         Spos << status.position << std::endl;
-        std::cout << status.position << ", " << status.velocity << ", " << status.acceleration << std::endl;
         Svel << status.velocity << std::endl;
         Sacc << status.acceleration << std::endl;
     }

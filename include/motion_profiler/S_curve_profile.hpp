@@ -1,6 +1,7 @@
 #include <map>
 #include <array>
 #include <vector>
+#include <cmath>
 
 /*typedef struct{
     std::optional<float> maxVelocity;
@@ -9,55 +10,41 @@
 }ProfileConstraints;*/
 
 class SigmoidMotionProfile {
-public:
-    struct ProfileStatus{
-        float position, velocity, acceleration;
-    };
+    public:
+        struct ProfileStatus {
+                float position, velocity, acceleration;
+        };
+    private:
+        constexpr static float integral(float input, float time) { return input * time; }
 
-private:
-    static float integral(float rhs, float time){
-        return rhs * time;
-    }
-    static float doubleIntegral(float rhs, float time){
-        return rhs * time * time / 2;
-    }
-    static float tripleIntegral(float rhs, float time){
-        return rhs * time * time * time / 6;
-    }
+        constexpr static float doubleIntegral(float input, float time) { return input * std::pow(time, 2) / 2; }
 
+        constexpr static float tripleIntegral(float input, float time) { return input * std::pow(time, 3) / 6; }
 
-    float target;
-    float maxVelocity, maxAcceleration, maxDeceleration;
-    float jerk;
+        float target;
+        float maxVelocity, maxAcceleration, maxDeceleration;
+        float jerk;
+        float ratio;
+        bool maxAccelNotReach = false;
+        bool maxVelNotReach = false;
 
-    float currentPosition;
-    float currentVelocity;
-    float currentAcceleration;
-    float currentJerk;
+        float timeAtJ;
+        float timeAtA;
+        float timeAtV;
+        std::array<float, 8> timeInterval;
 
-    float timeToMaxAccel, timeToMaxDecel;
-    std::map<float, ProfileStatus> profile;
+        std::array<float, 8> endPhaseAcceleration;
+        std::array<float, 8> endPhaseVelocity;
+        std::array<float, 8> endPhasePosition;
 
-//    std::map<std::pair<float, float>, ProfileConstraints> constraints;
+        std::map<float, SigmoidMotionProfile::ProfileStatus> profile;
+        ProfileStatus step(float time);
+//        ProfileStatus stepByDisance(float distance);
+    public:
+        SigmoidMotionProfile(float target, float maxVelocity, float maxAcceleration, float maxDeceleration, float jerk);
 
-    std::vector<float> timeInterval;
+        //    SigmoidMotionProfile* setConstraints(float startPos, float endPos, ProfileConstraints constraints);
+        float getTotalTime();
 
-
-    unsigned int currentInterval;
-
-    void updateInterval(float time);
-    float getJerk(float time);
-    float getDisplacement(float time);
-    float getVelocity(float time);
-    float getAcceleration(float time);
-public:
-
-    SigmoidMotionProfile(float target, float maxVelocity, float maxAcceleration, float maxDeceleration, float jerk);
-    SigmoidMotionProfile(float target, float maxVelocity, float maxAcceleration, float jerk);
-//    SigmoidMotionProfile setConstraints(float startPos, float endPos, ProfileConstraints constraints);
-    float getTotalTime();
-    std::map<float, ProfileStatus> getProfile(float dt = 0.01);
+        std::map<float, SigmoidMotionProfile::ProfileStatus> getProfile(float dt = 0.005);
 };
-
-
-
