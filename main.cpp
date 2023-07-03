@@ -15,8 +15,8 @@ int main(){
     std::ofstream Sacc;
     Sacc.open("/Users/rockychen/Desktop/motionProfile/Ramsete/include/Sacceleration.txt");
 
-    std::map<float, SigmoidMotionProfile::ProfileStatus>profile = SigmoidMotionProfile(20, 6, 13, 5,20).getProfile(0.001);
-    std::cout << profile.size();
+    std::map<float, SigmoidMotionProfile::ProfileStatus>profile = SigmoidMotionProfile(20, 10, 13, 8,20).getProfile(0.01);
+//    std::cout << profile.size();
     for(auto& [time, status] : profile){
         Spos << status.position << std::endl;
         Svel << status.velocity << std::endl;

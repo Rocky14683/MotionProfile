@@ -39,12 +39,14 @@ class SigmoidMotionProfile {
 
         std::map<float, SigmoidMotionProfile::ProfileStatus> profile;
         ProfileStatus step(float time);
+        float getJerk(unsigned int currentInterval);
 //        ProfileStatus stepByDisance(float distance);
     public:
         SigmoidMotionProfile(float target, float maxVelocity, float maxAcceleration, float maxDeceleration, float jerk);
+        ~SigmoidMotionProfile() = default;
 
         //    SigmoidMotionProfile* setConstraints(float startPos, float endPos, ProfileConstraints constraints);
         float getTotalTime();
 
-        std::map<float, SigmoidMotionProfile::ProfileStatus> getProfile(float dt = 0.005);
+        std::map<float, SigmoidMotionProfile::ProfileStatus> getProfile(float dt = 0.01);
 };
