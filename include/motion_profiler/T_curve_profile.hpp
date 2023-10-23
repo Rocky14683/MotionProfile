@@ -1,5 +1,4 @@
-#ifndef DAFUCK
-#define DAFUCK
+#pragma once
 #include <map>
 
 class MotionProfile {
@@ -26,4 +25,4 @@ public:
     std::map<float, MotionProfile::position_status> get_profile(float delta_t);
 };
 
-#endif
+

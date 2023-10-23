@@ -28,14 +28,15 @@ SigmoidMotionProfile::SigmoidMotionProfile(float target, float maxVelocity, floa
 
     if (this->timeAtV < 0) { // maxVelocity is not reachable
         this->timeAtV = 0;
-        float lambda = std::powf(this->timeAtJ, 2) + (8 * this->target)/ (this->jerk * this->timeAtJ * (this->ratio + 1));
-        this->timeAtA = (std::sqrtf(lambda) -3 * this->timeAtJ ) / 2;
+        float lambda =
+            std::powf(this->timeAtJ, 2) + (8 * this->target) / (this->jerk * this->timeAtJ * (this->ratio + 1));
+        this->timeAtA = (std::sqrtf(lambda) - 3 * this->timeAtJ) / 2;
         this->maxVelNotReach = true;
         std::cout << "maxVelocity is not reachable" << std::endl;
 
         if (this->timeAtA < 0) { // maxAcceleration is not reachable
             this->timeAtA = 0;
-            this->timeAtJ = std::powf(this->target / (this->jerk * (this->ratio + 1)), 1 / 3);
+            this->timeAtJ = std::powf(this->target / (this->jerk * (this->ratio + 1)), 1.0f / 3);
             this->maxAccelNotReach = true;
             std::cout << "2. maxAcceleration is not reachable" << std::endl;
         }
@@ -55,12 +56,49 @@ SigmoidMotionProfile::SigmoidMotionProfile(float target, float maxVelocity, floa
 
     std::cout << "calculated length: "
               << this->jerk * this->timeAtJ * (this->timeAtJ + this->timeAtA) / 2 *
-                     ((this->ratio + 1) * (2 * this->timeAtJ + this->timeAtA) + 2 * this->timeAtV);
+                     ((this->ratio + 1) * (2 * this->timeAtJ + this->timeAtA) + 2 * this->timeAtV)
+              << std::endl;
 
     this->endPhaseAcceleration[0] = this->endPhaseVelocity[0] = this->endPhasePosition[0] = 0.0f;
+
+    // Pre-calculate status at the end of each interview
+    for (int interval = 1; interval < this->timeInterval.size(); interval++) {
+        float sectionTime = timeInterval[interval] - timeInterval[interval - 1];
+        int deceling = interval < 4 ? 1 : -1;
+        float currentJerk = deceling == 1 ? getJerk(interval) : getJerk(interval) / (float)std::pow(this->ratio, 2);
+
+        this->endPhaseAcceleration[interval] =
+            this->endPhaseAcceleration[interval - 1] + integral(currentJerk, sectionTime);
+
+        this->endPhaseVelocity[interval] = this->endPhaseVelocity[interval - 1] +
+                                           doubleIntegral(currentJerk, sectionTime) +
+                                           integral(this->endPhaseAcceleration[interval - 1], sectionTime);
+
+        this->endPhasePosition[interval] = this->endPhasePosition[interval - 1] +
+                                           tripleIntegral(currentJerk, sectionTime) +
+                                           doubleIntegral(this->endPhaseAcceleration[interval - 1], sectionTime) +
+                                           integral(this->endPhaseVelocity[interval - 1], sectionTime);
+
+        std::cout << "interval " << interval << ": " << this->endPhasePosition[interval] << ", "
+                  << this->endPhaseVelocity[interval] << ", " << this->endPhaseAcceleration[interval] << std::endl;
+    }
 };
 
 float SigmoidMotionProfile::getTotalTime() { return this->timeInterval[7]; }
+
+float SigmoidMotionProfile::getJerk(unsigned int currentInterval) {
+    switch (currentInterval) {
+        case 1:
+        case 7: return this->jerk;
+        case 0:
+        case 2:
+        case 4:
+        case 6: return 0.0f;
+        case 3:
+        case 5: return -this->jerk;
+    }
+    return 0;
+}
 
 SigmoidMotionProfile::ProfileStatus SigmoidMotionProfile::step(float time) {
     if (time > this->timeInterval[7]) throw std::runtime_error("Inputed Time is Larger Than Profile Time");
@@ -77,21 +115,10 @@ SigmoidMotionProfile::ProfileStatus SigmoidMotionProfile::step(float time) {
 
     unsigned int currentInterval = updateInterval();
 
-    auto getJerk = [&]() -> float {
-        switch (currentInterval) {
-            case 2:
-            case 4:
-            case 6: return 0.0f;
-            case 1:
-            case 7: return this->jerk;
-            case 5:
-            case 3: return -this->jerk;
-        }
-    };
-
     float sectionTime = time - timeInterval[currentInterval - 1];
     int deceling = currentInterval < 4 ? 1 : -1;
-    float currentJerk = deceling == 1 ? getJerk() : getJerk() / (float)std::pow(this->ratio, 2);
+    float currentJerk =
+        deceling == 1 ? getJerk(currentInterval) : getJerk(currentInterval) / (float)std::pow(this->ratio, 2);
     // calculate
     status.acceleration = this->endPhaseAcceleration[currentInterval] =
         this->endPhaseAcceleration[currentInterval - 1] + integral(currentJerk, sectionTime);
@@ -105,20 +132,12 @@ SigmoidMotionProfile::ProfileStatus SigmoidMotionProfile::step(float time) {
         doubleIntegral(this->endPhaseAcceleration[currentInterval - 1], sectionTime) +
         integral(this->endPhaseVelocity[currentInterval - 1], sectionTime);
 
-    if ((this->maxAccelNotReach && (currentInterval == 1 || currentInterval == 5)) ||
-        (this->maxVelNotReach && currentInterval == 3)) {
-        this->endPhaseAcceleration[currentInterval + 1] = endPhaseAcceleration[currentInterval];
-        this->endPhaseVelocity[currentInterval + 1] = endPhaseVelocity[currentInterval];
-        this->endPhasePosition[currentInterval + 1] = endPhasePosition[currentInterval];
-    }
-
     std::cout << time << ": " << status.position << ", " << status.velocity << ", " << status.acceleration << std::endl;
     std::cout << currentInterval << std::endl;
     return status;
 }
 
 std::map<float, SigmoidMotionProfile::ProfileStatus> SigmoidMotionProfile::getProfile(float dt) {
-    dt = fmin(dt, 0.005);
     for (float t = 0; t < this->getTotalTime(); t += dt) { this->profile[t] = this->step(t); }
     return this->profile;
 }

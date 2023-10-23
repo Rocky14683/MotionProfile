@@ -21,7 +21,7 @@ for t in range(-5, 0):
     Sposition.append(0)
     Svelocity.append(0)
     Sacceleration.append(0)
-    Stime.append(t / 0.001)
+    Stime.append(t / 0.01)
 
 
 # for t in range(-10, 1):
@@ -42,7 +42,7 @@ while True:
 
     Stime.append(i)
 
-    i += 0.001
+    i += 0.01
 
 
 # while True:
@@ -71,15 +71,15 @@ figure, axis = plt.subplots(2, 2)
 
 axis[0, 0].plot(Stime, Sposition)
 axis[0, 0].set_title("S-Curve Position vs. Time")
-axis[0, 0].axis([-1, 6, -1, 25])
+axis[0, 0].axis([-1, 8, -1, 25])
 
 axis[0, 1].plot(Stime, Svelocity)
 axis[0, 1].set_title("S-Curve Velocity vs. Time")
-axis[0, 1].axis([-1, 6, -1, 12])
+axis[0, 1].axis([-1, 8, -1, 12])
 
 axis[1, 0].plot(Stime, Sacceleration)
 axis[1, 0].set_title("S-Curve Acceleration vs. Time")
-axis[1, 0].axis([-1, 6, -20, 16])
+axis[1, 0].axis([-1, 8, -20, 16])
 
 # axis[1, 0].plot(Ntime, Nposition)
 # axis[1, 0].set_title("T-Curve Position vs. Time")
